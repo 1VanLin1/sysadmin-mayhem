@@ -1,0 +1,136 @@
+{
+  "users": [
+    {
+      "username": "root_admin",
+      "color": "#6366f1",
+      "highScore": 1850,
+      "totalRepairs": 42,
+      "wins": 15,
+      "gamesPlayed": 18,
+      "id": "usr_1794913877396_0bvy",
+      "salt": "460beaefb89f565c9d466fe9bac87f0d",
+      "passwordHash": "0a43003abe604a8daca6024a8484648fb4b22b7ad322b37718e36f12e520d094",
+      "createdAt": "2026-11-17T11:11:17.396Z"
+    },
+    {
+      "username": "kernel_panic",
+      "color": "#e11d48",
+      "highScore": 1420,
+      "totalRepairs": 31,
+      "wins": 9,
+      "gamesPlayed": 14,
+      "id": "usr_1794913877396_wx0e",
+      "salt": "a50753447d95c459f981ed6f6ffa7950",
+      "passwordHash": "43976ff8c813c784a890b5b9b4cc3eeb0bf4233c38463837532ff373a8417f45",
+      "createdAt": "2026-11-17T11:11:17.396Z"
+    },
+    {
+      "username": "devops_ninja",
+      "color": "#10b981",
+      "highScore": 1100,
+      "totalRepairs": 24,
+      "wins": 6,
+      "gamesPlayed": 10,
+      "id": "usr_1794913877396_guyr",
+      "salt": "c0271dd95d361a9150a2bb562909fa27",
+      "passwordHash": "6fd0d5b3b351db71c6e85c3ce97d53d42e23f0f2da8c08514622e461ea8e8870",
+      "createdAt": "2026-11-17T11:11:17.396Z"
+    },
+    {
+      "id": "usr_1794913961565_zs1z",
+      "username": "test_admin_1794913961428",
+      "salt": "9c104a3b3dab1d5f8521e6559ea20275",
+      "passwordHash": "08265492b81093bd1fc031eace79177c81c9f6ebccfc6ebd97cfd810ce639bde",
+      "color": "#10b981",
+      "highScore": 0,
+      "totalRepairs": 0,
+      "wins": 0,
+      "gamesPlayed": 0,
+      "createdAt": "2026-11-17T11:12:41.565Z"
+    },
+    {
+      "id": "usr_1794914035984_msz7",
+      "username": "test_admin_1794914035907",
+      "salt": "2bb7a346aab57929089252911044a3a5",
+      "passwordHash": "c88a56c74a5a0d7ddd5608023ed2a630944b335eda51bf910b07f29cac82cc63",
+      "color": "#10b981",
+      "highScore": 0,
+      "totalRepairs": 0,
+      "wins": 0,
+      "gamesPlayed": 0,
+      "createdAt": "2026-11-17T11:13:55.984Z"
+    },
+    {
+      "id": "usr_1794914225667_9jgd",
+      "username": "test_admin_1794914225592",
+      "salt": "0906954593943b498605e306b94a84be",
+      "passwordHash": "2beb4de91920157d9ab49ff7dec631f3138989dd7752cc046fdab913df93f591",
+      "color": "#10b981",
+      "highScore": 0,
+      "totalRepairs": 0,
+      "wins": 0,
+      "gamesPlayed": 0,
+      "createdAt": "2026-11-17T11:17:05.667Z"
+    },
+    {
+      "id": "usr_1794914250103_hrc3",
+      "username": "test_admin_1794914250045",
+      "salt": "095eac4ad5295c612d04f674e9f0d5da",
+      "passwordHash": "5d45d659609418f06a6742c3e8c4b23b3d2b662eb6ca4c6c89be230449e7ebb7",
+      "color": "#10b981",
+      "highScore": 0,
+      "totalRepairs": 0,
+      "wins": 0,
+      "gamesPlayed": 0,
+      "createdAt": "2026-11-17T11:17:30.103Z"
+    },
+    {
+      "id": "usr_1794914303205_vuwt",
+      "username": "test_admin_1794914303145",
+      "salt": "4930819207111b80ca1282c67cfb84e3",
+      "passwordHash": "fb3c6f782493e2178fd2e68840c54f84c00a6bec14d8e06d8f855ab2fdcd8cfc",
+      "color": "#10b981",
+      "highScore": 0,
+      "totalRepairs": 0,
+      "wins": 0,
+      "gamesPlayed": 0,
+      "createdAt": "2026-11-17T11:18:23.205Z"
+    },
+    {
+      "id": "usr_1794914361795_imcf",
+      "username": "test_admin_1794914361718",
+      "salt": "4852e7b3cd5d6a784dcc35e350cd4a87",
+      "passwordHash": "bcb15f60c5f2d487ee9d6dd929b7d4a7fc0e24714d24af9b187c3b4fcd5118ac",
+      "color": "#10b981",
+      "highScore": 0,
+      "totalRepairs": 0,
+      "wins": 0,
+      "gamesPlayed": 0,
+      "createdAt": "2026-11-17T11:19:21.795Z"
+    },
+    {
+      "id": "usr_1794914395853_f0y8",
+      "username": "VanLin",
+      "salt": "41876fcc3844c3d1c449b41ddef928fc",
+      "passwordHash": "2682548a95337b23c08dadc7b3f2e7c61579d0cdb9243e3ea72062fc75cc61fe",
+      "color": "#6366f1",
+      "highScore": 2950,
+      "totalRepairs": 14,
+      "wins": 1,
+      "gamesPlayed": 3,
+      "createdAt": "2026-11-17T11:19:55.853Z"
+    },
+    {
+      "id": "usr_1794914976960_96fo",
+      "username": "123",
+      "salt": "dba1516e47925ef7ce5830f7f5d88d76",
+      "passwordHash": "7d9cd5053f681d2a14317efacbc4c863278e7b0b1895706f23a8a25f6eb1268c",
+      "color": "#6366f1",
+      "highScore": 740,
+      "totalRepairs": 3,
+      "wins": 0,
+      "gamesPlayed": 1,
+      "createdAt": "2026-11-17T11:29:36.961Z"
+    }
+  ]
+}
