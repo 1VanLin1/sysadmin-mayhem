@@ -1,20 +1,7 @@
 import { MAP_CONFIG, ZONES, INCIDENT_TEMPLATES, SHIFT_LEVELS, ABILITIES, ADMIN_CLASSES, getAdminClass } from './constants.js';
 import { db } from './db.js';
 import { simulateMovement, resolveCollisions } from '../src/game/physics.js';
-
-// Waypoints for navigation through indoor aisles and outdoor doorway
-const INDOOR_WAYPOINTS = [
-  { x: 80, y: 55 }, { x: 240, y: 55 }, { x: 410, y: 55 }, { x: 570, y: 55 }, { x: 750, y: 55 },
-  { x: 80, y: 285 }, { x: 240, y: 285 }, { x: 410, y: 285 }, { x: 570, y: 285 }, { x: 750, y: 285 },
-  { x: 80, y: 510 }, { x: 240, y: 510 }, { x: 410, y: 510 }, { x: 570, y: 510 }, { x: 750, y: 510 },
-  { x: 860, y: 370 } // Doorway threshold between indoor and outdoor
-];
-
-const OUTDOOR_WAYPOINTS = [
-  { x: 860, y: 370 }, // Doorway
-  { x: 910, y: 170 }, { x: 910, y: 370 }, { x: 910, y: 570 },
-  { x: 1130, y: 170 }, { x: 1130, y: 370 }, { x: 1130, y: 570 }
-];
+import { findNavigationWaypoints, getClosestNavNode } from './pathfinding.js';
 
 export class GameRoom {
   constructor(id, io, mode = 'coop') {
@@ -887,70 +874,128 @@ export class GameRoom {
     this.io.to(this.id).emit('incident_spawned', incident);
   }
 
-  // --- SMART ВАСИЛЬИЧ 3.0 (Guaranteed Task Resolution & Indoor/Outdoor Doorway Navigation) ---
+  // --- SMART ВАСИЛЬИЧ 4.0 (Full A* Aisle Navigation, Anti-Stuck Watchdog & Blackout Response) ---
   updateAutonomousVasilich(bot) {
-    if (this.activeIncidents.length === 0) {
-      bot.vx = 0;
-      bot.vy = 0;
-      bot.botState = 'Все системы в норме ☕';
-      bot.isInteracting = false;
-      return;
-    }
-
-    // In Co-op mode, pick incident that is NOT currently being fixed by a human player
-    const humanPlayers = Array.from(this.players.values()).filter((p) => !p.isBot);
+    let targetZone = null;
     let targetIncident = null;
 
-    for (const inc of this.activeIncidents) {
-      const isTaken = humanPlayers.some((hp) => hp.targetZoneId === inc.targetZoneId && hp.isInteracting);
-      if (!isTaken) {
-        targetIncident = inc;
-        break;
+    // Blackout Priority: if power is down and UPS is depleting, run to DGU generator!
+    if (this.blackout?.active && this.blackout.upsRemaining <= 42) {
+      targetZone = ZONES.find((z) => z.id === 'outdoor_generator');
+      bot.activeTool = 'hdd';
+    }
+
+    if (!targetZone) {
+      if (this.activeIncidents.length === 0) {
+        bot.vx = 0;
+        bot.vy = 0;
+        bot.botState = 'Все системы в норме ☕';
+        bot.isInteracting = false;
+        bot.pathWaypoints = null;
+        return;
+      }
+
+      // In Co-op mode, pick incident that is NOT currently being fixed by a human player
+      const humanPlayers = Array.from(this.players.values()).filter((p) => !p.isBot);
+      for (const inc of this.activeIncidents) {
+        const isTaken = humanPlayers.some((hp) => hp.targetZoneId === inc.targetZoneId && hp.isInteracting);
+        if (!isTaken) {
+          targetIncident = inc;
+          break;
+        }
+      }
+      if (!targetIncident) targetIncident = this.activeIncidents[0];
+      targetZone = ZONES.find((z) => z.id === targetIncident.targetZoneId);
+      if (targetIncident.requiredItem) {
+        bot.activeTool = targetIncident.requiredItem;
       }
     }
-    if (!targetIncident) targetIncident = this.activeIncidents[0];
 
-    const targetZone = ZONES.find((z) => z.id === targetIncident.targetZoneId);
     if (!targetZone) return;
 
-    // Auto-equip the right tool for the incident
-    if (targetIncident.requiredItem) {
-      bot.activeTool = targetIncident.requiredItem;
+    // Calculate best interaction point outside obstacle box
+    const candidatePoints = [
+      { x: targetZone.x - 24, y: Math.max(targetZone.y + 10, Math.min(targetZone.y + targetZone.h - 10, bot.y)) },
+      { x: targetZone.x + targetZone.w + 24, y: Math.max(targetZone.y + 10, Math.min(targetZone.y + targetZone.h - 10, bot.y)) },
+      { x: Math.max(targetZone.x + 10, Math.min(targetZone.x + targetZone.w - 10, bot.x)), y: targetZone.y - 24 },
+      { x: Math.max(targetZone.x + 10, Math.min(targetZone.x + targetZone.w - 10, bot.x)), y: targetZone.y + targetZone.h + 24 }
+    ];
+    let bestPoint = candidatePoints[0];
+    let minCandidateDist = Infinity;
+    for (const cp of candidatePoints) {
+      const d = Math.hypot(bot.x - cp.x, bot.y - cp.y);
+      if (d < minCandidateDist) {
+        minCandidateDist = d;
+        bestPoint = cp;
+      }
     }
 
-    // Calculate closest reachable point on zone border (outside its solid collision box)
-    const closestX = Math.max(targetZone.x, Math.min(bot.x, targetZone.x + targetZone.w));
-    const closestY = Math.max(targetZone.y, Math.min(bot.y, targetZone.y + targetZone.h));
-    const distToZone = Math.hypot(bot.x - closestX, bot.y - closestY);
+    const distToZone = Math.hypot(
+      bot.x - Math.max(targetZone.x, Math.min(bot.x, targetZone.x + targetZone.w)),
+      bot.y - Math.max(targetZone.y, Math.min(bot.y, targetZone.y + targetZone.h))
+    );
 
-    // If within reach (55px) of zone edge: LOCK IN AND REPAIR WITH BALANCED SPEED
-    if (distToZone <= 55) {
+    // --- REACHED ZONE (<= 60px): PERFORM REPAIR OR DGU START ---
+    if (distToZone <= 60) {
       bot.vx = 0;
       bot.vy = 0;
+      bot.pathWaypoints = null;
+      bot.stuckTicks = 0;
 
       // Small reaction delay (6 ticks = 0.24s) so human player has priority
       if (!bot.inspectTicks) bot.inspectTicks = 0;
       if (bot.inspectTicks < 6) {
         bot.inspectTicks += 1;
-        bot.botState = `🔍 Осматривает ${targetIncident.targetZoneLabel}...`;
+        bot.botState = `🔍 Осматривает ${targetZone.label}...`;
         return;
       }
 
-      bot.botState = `🛠️ Чинит ${targetIncident.targetZoneLabel}...`;
+      bot.botState = `🛠️ Чинит ${targetZone.label}...`;
 
-      if (targetIncident.type === 'ddos_attack') {
+      // Handle Blackout DGU Start
+      if (this.blackout?.active && targetZone.id === 'outdoor_generator') {
+        if (!bot.isInteracting) {
+          bot.isInteracting = true;
+          bot.targetZoneId = targetZone.id;
+          bot.interactProgress = 0;
+        }
+        bot.interactProgress += 2.8;
+        if (bot.interactProgress >= 100) {
+          this.blackout.active = false;
+          this.powerOnline = true;
+          bot.score += 400;
+          bot.repairsCount += 1;
+          this.levelRepairs += 1;
+          this.sla = Math.min(100, this.sla + 25);
+          bot.isInteracting = false;
+          bot.interactProgress = 0;
+          bot.targetZoneId = null;
+          bot.inspectTicks = 0;
+          this.io.to(this.id).emit('sound_event', { sound: 'success', x: bot.x, y: bot.y });
+          this.io.to(this.id).emit('floating_text', {
+            text: '⚡ Васильич запустил ДГУ! Питание в норме!',
+            color: '#22c55e',
+            x: bot.x,
+            y: bot.y - 30
+          });
+          this.checkLevelProgression();
+        }
+        return;
+      }
+
+      // Handle Terminal incidents
+      if (targetIncident?.type === 'ddos_attack') {
         bot.inspectTicks = 0;
         this.handleTerminalCommand(bot, 'kill -9 666');
-      } else if (targetIncident.type === 'ransomware_attack') {
+      } else if (targetIncident?.type === 'ransomware_attack') {
         bot.inspectTicks = 0;
         this.handleTerminalCommand(bot, 'restore-backup');
-      } else {
+      } else if (targetIncident) {
         if (!bot.isInteracting) {
           bot.isInteracting = true;
           bot.targetZoneId = targetIncident.targetZoneId;
           bot.interactProgress = 0;
         }
-        // Advance repair progress balanced: 2.0 per tick (Human base is 2.6, with overclock 6.5)
         bot.interactProgress += 2.0;
 
         if (bot.interactProgress >= 100) {
@@ -985,34 +1030,59 @@ export class GameRoom {
       return;
     }
 
-    // Reset inspect ticks if moving
+    // --- NAVIGATION LOGIC ---
     bot.inspectTicks = 0;
-
-    // Navigation logic:
     bot.isInteracting = false;
-    bot.botState = `🏃 Спешит к ${targetIncident.targetZoneLabel}`;
-    const speed = MAP_CONFIG.baseSpeed * 0.95;
+    bot.botState = `🏃 Спешит к ${targetZone.label}`;
 
-    // Check if transition between indoor and outdoor is needed
-    const botIsIndoor = bot.x < MAP_CONFIG.outdoorStartX;
-    const targetIsIndoor = targetZone.x < MAP_CONFIG.outdoorStartX;
+    // Anti-Stuck Watchdog: check if bot hasn't moved for 8 ticks
+    if (bot.lastX !== undefined) {
+      const movedDist = Math.hypot(bot.x - bot.lastX, bot.y - bot.lastY);
+      if (movedDist < 0.6 && (bot.vx !== 0 || bot.vy !== 0)) {
+        bot.stuckTicks = (bot.stuckTicks || 0) + 1;
+      } else {
+        bot.stuckTicks = 0;
+      }
+    }
+    bot.lastX = bot.x;
+    bot.lastY = bot.y;
 
-    let targetWaypointX = closestX;
-    let targetWaypointY = closestY;
+    if (bot.stuckTicks >= 8) {
+      // Unstuck: nudge towards nearest clear aisle node and recalculate
+      const rescueNode = getClosestNavNode(bot.x, bot.y);
+      if (rescueNode) {
+        const unstuckAngle = Math.atan2(rescueNode.y - bot.y, rescueNode.x - bot.x);
+        bot.x += Math.cos(unstuckAngle) * 8;
+        bot.y += Math.sin(unstuckAngle) * 8;
+      }
+      bot.pathWaypoints = null;
+      bot.stuckTicks = 0;
+      bot.botState = '⚡ Обходит стойку...';
+    }
 
-    if (botIsIndoor !== targetIsIndoor) {
-      // Must pass through the Doorway at (x: 860, y: 370)
-      const distToDoor = Math.hypot(860 - bot.x, 370 - bot.y);
-      if (distToDoor > 30) {
-        targetWaypointX = 860;
-        targetWaypointY = 370;
+    // Recompute path if needed
+    const targetKey = `${targetZone.id}_${bestPoint.x}_${bestPoint.y}`;
+    if (!bot.pathWaypoints || bot.currentPathTargetKey !== targetKey) {
+      bot.pathWaypoints = findNavigationWaypoints(bot.x, bot.y, bestPoint.x, bestPoint.y);
+      bot.currentPathTargetKey = targetKey;
+    }
+
+    // Advance waypoints if close to current
+    while (bot.pathWaypoints && bot.pathWaypoints.length > 0) {
+      const curWP = bot.pathWaypoints[0];
+      const distToWP = Math.hypot(bot.x - curWP.x, bot.y - curWP.y);
+      if (distToWP < 22 && bot.pathWaypoints.length > 1) {
+        bot.pathWaypoints.shift();
+      } else {
+        break;
       }
     }
 
-    // Direct angle navigation towards target waypoint
-    const angle = Math.atan2(targetWaypointY - bot.y, targetWaypointX - bot.x);
-    bot.vx = Math.cos(angle) * speed;
-    bot.vy = Math.sin(angle) * speed;
+    const currentWP = (bot.pathWaypoints && bot.pathWaypoints[0]) || bestPoint;
+    const speed = MAP_CONFIG.baseSpeed * 0.95;
+    const moveAngle = Math.atan2(currentWP.y - bot.y, currentWP.x - bot.x);
+    bot.vx = Math.cos(moveAngle) * speed;
+    bot.vy = Math.sin(moveAngle) * speed;
   }
 
   endGame(reason, customWinner = null) {
