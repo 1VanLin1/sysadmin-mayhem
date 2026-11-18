@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Timer, ShieldCheck, Volume2, VolumeX, AlertTriangle, ChevronDown, ChevronUp, Swords, Zap, BatteryCharging, Bomb, LogOut, Flag } from 'lucide-react';
-import { SHIFT_LEVELS, ABILITIES } from '../game/constants.js';
+import { Timer, ShieldCheck, Volume2, VolumeX, AlertTriangle, ChevronDown, ChevronUp, Swords, Zap, BatteryCharging, Bomb, LogOut, Flag, Radio, Wifi } from 'lucide-react';
+import { SHIFT_LEVELS, ABILITIES, getCareerTitle } from '../game/constants.js';
+import { MiniMap } from './MiniMap.jsx';
 
 export function HUD({
   myPlayer,
@@ -19,6 +20,9 @@ export function HUD({
   onRequestCoopExit,
   onRespondCoopExit,
   coopExitPrompt,
+  onOpenPingWheel,
+  quickPings = [],
+  ping = 25,
   isMuted,
   onToggleMute
 }) {
@@ -55,6 +59,8 @@ export function HUD({
   const oppScore = opponent?.score || 0;
   const totalDuelScore = Math.max(1, myScore + oppScore);
   const myPercent = Math.round((myScore / totalDuelScore) * 100);
+
+  const careerRank = getCareerTitle(myScore);
 
   const handleConfirmExit = () => {
     setShowExitConfirm(false);
@@ -120,16 +126,39 @@ export function HUD({
           </div>
         )}
 
-        {/* Center: Game Timer */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 px-6 shadow-xl backdrop-blur-md flex items-center gap-3">
-          <Timer className={`w-5 h-5 ${gameTime <= 30 ? 'text-rose-400 animate-spin' : 'text-indigo-400'}`} />
-          <span className={`font-mono text-xl font-black ${gameTime <= 30 ? 'text-rose-400 animate-pulse' : 'text-white'}`}>
-            {formatTime(gameTime)}
-          </span>
+        {/* Center: Game Timer & Network Ping Indicator */}
+        <div className="flex items-center gap-2.5">
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 px-6 shadow-xl backdrop-blur-md flex items-center gap-3">
+            <Timer className={`w-5 h-5 ${gameTime <= 30 ? 'text-rose-400 animate-spin' : 'text-indigo-400'}`} />
+            <span className={`font-mono text-xl font-black ${gameTime <= 30 ? 'text-rose-400 animate-pulse' : 'text-white'}`}>
+              {formatTime(gameTime)}
+            </span>
+          </div>
+
+          {/* Network Ping Indicator with Color Quality */}
+          <div
+            className="bg-slate-900/90 border border-slate-800 rounded-2xl p-2.5 px-3.5 shadow-xl backdrop-blur-md flex items-center gap-2 font-mono text-xs"
+            title={`Задержка сети (Ping): ${ping} ms`}
+          >
+            <Wifi className={`w-4 h-4 ${ping < 65 ? 'text-emerald-400' : ping < 130 ? 'text-amber-400' : 'text-rose-400 animate-pulse'}`} />
+            <span className={`font-bold ${ping < 65 ? 'text-emerald-400' : ping < 130 ? 'text-amber-400' : 'text-rose-400'}`}>
+              {ping} ms
+            </span>
+          </div>
         </div>
 
-        {/* Right: Sound Toggle & Exit/Surrender Button */}
-        <div className="flex items-center gap-3">
+        {/* Right: Quick Ping Button, Sound Toggle & Exit/Surrender Button */}
+        <div className="flex items-center gap-2.5">
+          {/* Quick Ping Wheel Button */}
+          <button
+            onClick={onOpenPingWheel}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-indigo-950/60 border border-indigo-700/60 hover:bg-indigo-900/80 text-indigo-300 hover:text-white text-xs font-mono font-bold shadow-xl backdrop-blur-md transition-all active:scale-95"
+            title="Открыть колесо быстрых команд (Клавиша G)"
+          >
+            <span className="text-base">📢</span>
+            <span className="hidden sm:inline">Команды [G]</span>
+          </button>
+
           <button
             onClick={onToggleMute}
             className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors shadow-xl backdrop-blur-md pointer-events-auto"
@@ -297,7 +326,7 @@ export function HUD({
                 onClick={() => onRespondCoopExit?.(false)}
                 className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
               >
-                Отклонить (Играть дальше)
+                Отклонить
               </button>
               <button
                 onClick={() => onRespondCoopExit?.(true)}
@@ -310,27 +339,41 @@ export function HUD({
         </div>
       )}
 
-      {/* Bottom Controls Bar: Profile, Abilities with CD & Toolbelt */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pointer-events-auto">
-        {/* Profile & Score */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-2.5 px-4 shadow-xl backdrop-blur-md flex items-center gap-3">
-          <div
-            className="w-8 h-8 rounded-full border-2 border-white shadow-md flex items-center justify-center font-bold text-xs"
-            style={{ backgroundColor: myPlayer?.color || '#6366f1' }}
-          >
-            👨‍💻
-          </div>
-          <div>
-            <div className="text-sm font-bold text-white leading-tight">
-              {myPlayer?.name || 'Админ'}
+      {/* Bottom Controls Bar: MiniMap, Profile with Rank, Abilities with CD & Toolbelt */}
+      <div className="flex flex-col sm:flex-row items-end sm:items-center justify-between gap-3 pointer-events-auto">
+        {/* Left: Mini-Map Radar & Profile Badge with Career Rank */}
+        <div className="flex items-center gap-3">
+          {/* Mini-Map Radar */}
+          <MiniMap
+            players={players}
+            myPlayerId={myPlayer?.id}
+            activeIncidents={activeIncidents}
+            quickPings={quickPings}
+          />
+
+          {/* Profile & Career Rank */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-2.5 px-4 shadow-xl backdrop-blur-md flex items-center gap-3">
+            <div
+              className="w-9 h-9 rounded-full border-2 border-white shadow-md flex items-center justify-center font-bold text-sm shrink-0"
+              style={{ backgroundColor: myPlayer?.color || '#6366f1' }}
+            >
+              👨‍💻
             </div>
-            <div className="text-xs text-indigo-400 font-mono">
-              Очки: <span className="font-bold text-white">{myScore} XP</span>
+            <div>
+              <div className="text-sm font-bold text-white leading-tight flex items-center gap-1.5">
+                <span>{myPlayer?.name || 'Админ'}</span>
+                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700">
+                  {careerRank.icon} {careerRank.title}
+                </span>
+              </div>
+              <div className="text-xs text-indigo-400 font-mono mt-0.5">
+                Очки: <span className="font-bold text-white">{myScore} XP</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* ACTIVE ABILITIES WITH COOLDOWN BAR [R, F, C] */}
+        {/* Center: ACTIVE ABILITIES WITH COOLDOWN BAR [R, F, C] */}
         <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-2 px-3 shadow-xl backdrop-blur-md flex items-center gap-2">
           <span className="text-[11px] font-mono text-slate-400 mr-1 hidden lg:inline">
             Способности:
@@ -370,7 +413,7 @@ export function HUD({
           })}
         </div>
 
-        {/* Toolbelt Quick Inventory (Keys 1-5 or Click) */}
+        {/* Right: Toolbelt Quick Inventory (Keys 1-5 or Click) */}
         <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-2 px-3 shadow-xl backdrop-blur-md flex items-center gap-1.5">
           {TOOLS.map((tool) => {
             const isActive = currentTool === tool.id;

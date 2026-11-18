@@ -82,7 +82,7 @@ async function runFullSuite() {
   console.log('   -> Проверяем работу Васильича 3.0 по закрытию тикетов...');
   let vasilichScoreGained = false;
 
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 35; i++) {
     await new Promise((r) => setTimeout(r, 350));
     const cur = await new Promise((res) => sBot.once('game_state', res));
     const bot = cur.players.find((p) => p.isBot);

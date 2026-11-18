@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Server, Users, Bot, Play, Zap, Shield, Sparkles, Trophy, LogIn, UserCheck, LogOut, X, RefreshCw, Award, Copy, Check, Lock, User, Wrench } from 'lucide-react';
+import { Server, Users, Bot, Play, Zap, Shield, Sparkles, Trophy, LogIn, UserCheck, LogOut, X, RefreshCw, Award, Copy, Check, Lock, User, Wrench, Radio } from 'lucide-react';
 import { audio } from '../game/audio.js';
+import { getCareerTitle } from '../game/constants.js';
 
 const COLORS = [
   { name: 'Cyber Indigo', hex: '#6366f1' },
@@ -162,11 +163,14 @@ export function Lobby({ onJoinGame }) {
             </button>
 
             {currentUser ? (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono">
+              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono shadow-md">
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                 <span className="font-bold text-white">{currentUser.username}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700">
+                  {getCareerTitle(currentUser.highScore || 0).icon} {getCareerTitle(currentUser.highScore || 0).title}
+                </span>
                 <span className="text-slate-500">•</span>
-                <span className="text-amber-400">{currentUser.highScore || 0} XP</span>
+                <span className="text-amber-400 font-bold">{currentUser.highScore || 0} XP</span>
                 <button
                   onClick={handleLogout}
                   title="Выйти из аккаунта"
@@ -578,8 +582,15 @@ export function Lobby({ onJoinGame }) {
                       className="w-3.5 h-3.5 rounded-full"
                       style={{ backgroundColor: u.color || '#6366f1' }}
                     />
-                    <span className="text-sm font-semibold truncate max-w-[130px]">{u.username}</span>
-                    {idx === 0 && <Award className="w-4 h-4 text-amber-400 shrink-0" />}
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold truncate max-w-[130px]">{u.username}</span>
+                        {idx === 0 && <Award className="w-4 h-4 text-amber-400 shrink-0" />}
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {getCareerTitle(u.highScore || 0).icon} {getCareerTitle(u.highScore || 0).title}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="text-xs font-mono flex items-center gap-6">

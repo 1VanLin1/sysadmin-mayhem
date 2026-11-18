@@ -1,5 +1,6 @@
 import { MAP_CONFIG, ZONES, INCIDENT_TEMPLATES, SHIFT_LEVELS, ABILITIES } from './constants.js';
 import { db } from './db.js';
+import { simulateMovement, resolveCollisions } from '../src/game/physics.js';
 
 // Waypoints for navigation through indoor aisles and outdoor doorway
 const INDOOR_WAYPOINTS = [
@@ -235,6 +236,35 @@ export class GameRoom {
       this.pendingCoopExit = null;
     });
 
+    socket.on('player_move', ({ x, y, vx, vy }) => {
+      if (this.status !== 'playing') return;
+      if (typeof x === 'number' && typeof y === 'number' && !isNaN(x) && !isNaN(y)) {
+        const validated = resolveCollisions(x, y);
+        player.x = validated.x;
+        player.y = validated.y;
+        if (typeof vx === 'number') player.vx = vx;
+        if (typeof vy === 'number') player.vy = vy;
+      }
+    });
+
+    socket.on('ping_check', (data) => {
+      socket.emit('pong_check', data);
+    });
+
+    socket.on('quick_ping', (ping) => {
+      if (this.status !== 'playing') return;
+      this.io.to(this.id).emit('player_quick_ping', {
+        id: `ping_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        playerId: player.id,
+        playerName: player.name,
+        playerColor: player.color,
+        x: player.x,
+        y: player.y,
+        ...ping,
+        createdAt: Date.now()
+      });
+    });
+
     socket.on('start_game', () => {
       if (this.status === 'lobby' || this.status === 'game_over') {
         this.startGame();
@@ -375,51 +405,9 @@ export class GameRoom {
   }
 
   movePlayerWithCollision(player) {
-    let nextX = player.x + player.vx;
-    let nextY = player.y + player.vy;
-    const r = MAP_CONFIG.playerRadius;
-
-    // Boundaries of entire complex (Indoor + Outdoor)
-    const minX = MAP_CONFIG.wallThickness + r;
-    const maxX = MAP_CONFIG.width - MAP_CONFIG.wallThickness - r;
-    const minY = MAP_CONFIG.wallThickness + r;
-    const maxY = MAP_CONFIG.height - MAP_CONFIG.wallThickness - r;
-
-    nextX = Math.max(minX, Math.min(maxX, nextX));
-    nextY = Math.max(minY, Math.min(maxY, nextY));
-
-    // Dividing Wall between Indoor and Outdoor (x: 860) with Doorway at y: 300..440
-    const wallX = MAP_CONFIG.outdoorStartX;
-    const isDoorway = nextY >= 300 && nextY <= 440;
-
-    if (!isDoorway) {
-      // Top dividing wall (y: 0..300)
-      if (player.x <= wallX - r && nextX > wallX - r && nextY < 300) nextX = player.x;
-      if (player.x >= wallX + r && nextX < wallX + r && nextY < 300) nextX = player.x;
-
-      // Bottom dividing wall (y: 440..720)
-      if (player.x <= wallX - r && nextX > wallX - r && nextY > 440) nextX = player.x;
-      if (player.x >= wallX + r && nextX < wallX + r && nextY > 440) nextX = player.x;
-    }
-
-    // Obstacle collision (Racks, Desks, Chiller, Generator, Satellite)
-    for (const zone of ZONES) {
-      if (
-        nextX + r > zone.x &&
-        nextX - r < zone.x + zone.w &&
-        nextY + r > zone.y &&
-        nextY - r < zone.y + zone.h
-      ) {
-        const prevCollidesX = player.x + r > zone.x && player.x - r < zone.x + zone.w;
-        const prevCollidesY = player.y + r > zone.y && player.y - r < zone.y + zone.h;
-
-        if (!prevCollidesX) nextX = player.x;
-        if (!prevCollidesY) nextY = player.y;
-      }
-    }
-
-    player.x = nextX;
-    player.y = nextY;
+    const next = simulateMovement(player.x, player.y, player.vx, player.vy);
+    player.x = next.x;
+    player.y = next.y;
   }
 
   getNearestZone(player) {
@@ -482,10 +470,12 @@ export class GameRoom {
     // NOC Terminal
     if (zone.type === 'terminal') {
       const ddosIncident = this.activeIncidents.find((inc) => inc.type === 'ddos_attack');
+      const ransomwareIncident = this.activeIncidents.find((inc) => inc.type === 'ransomware_attack');
       if (player.socket) {
         player.socket.emit('open_terminal', {
           hasDdos: !!ddosIncident,
-          incidentId: ddosIncident ? ddosIncident.id : null
+          hasRansomware: !!ransomwareIncident,
+          incidentId: ddosIncident ? ddosIncident.id : (ransomwareIncident ? ransomwareIncident.id : null)
         });
       }
       return;
@@ -629,6 +619,7 @@ export class GameRoom {
   handleTerminalCommand(player, command) {
     const cmd = (command || '').trim().toLowerCase();
     const ddosIdx = this.activeIncidents.findIndex((inc) => inc.type === 'ddos_attack');
+    const ransomwareIdx = this.activeIncidents.findIndex((inc) => inc.type === 'ransomware_attack');
 
     if (ddosIdx !== -1 && (cmd.includes('kill') || cmd.includes('iptables') || cmd.includes('block') || cmd.includes('mitigate'))) {
       const incident = this.activeIncidents[ddosIdx];
@@ -652,6 +643,32 @@ export class GameRoom {
       });
 
       this.checkLevelProgression();
+      return;
+    }
+
+    if (ransomwareIdx !== -1 && (cmd.includes('restore') || cmd.includes('backup') || cmd.includes('decrypt') || cmd.includes('clean'))) {
+      const incident = this.activeIncidents[ransomwareIdx];
+      this.activeIncidents.splice(ransomwareIdx, 1);
+      player.score += incident.points;
+      player.repairsCount += 1;
+      this.levelRepairs += 1;
+      this.sla = Math.min(100, this.sla + 20);
+
+      this.io.to(this.id).emit('sound_event', { sound: 'success', x: 650, y: 550 });
+      this.io.to(this.id).emit('incident_resolved', {
+        incidentId: incident.id,
+        resolvedBy: player.name,
+        points: incident.points
+      });
+      this.io.to(this.id).emit('floating_text', {
+        text: `+${incident.points} XP! Бэкап восстановлен, шифровальщик удален!`,
+        color: '#22c55e',
+        x: player.x,
+        y: player.y - 25
+      });
+
+      this.checkLevelProgression();
+      return;
     }
   }
 
@@ -756,6 +773,9 @@ export class GameRoom {
       if (targetIncident.type === 'ddos_attack') {
         bot.inspectTicks = 0;
         this.handleTerminalCommand(bot, 'kill -9 666');
+      } else if (targetIncident.type === 'ransomware_attack') {
+        bot.inspectTicks = 0;
+        this.handleTerminalCommand(bot, 'restore-backup');
       } else {
         if (!bot.isInteracting) {
           bot.isInteracting = true;

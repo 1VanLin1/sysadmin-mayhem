@@ -327,7 +327,57 @@ export const INCIDENT_TEMPLATES = [
     points: 240,
     icon: '❄️',
     isOutdoor: true
+  },
+  {
+    type: 'coolant_leak',
+    title: 'Протечка фреона в контуре чиллера',
+    desc: '💧 Срочно во двор к градирне! Перекройте аварийный дренажный кран охлаждения.',
+    targetType: 'chiller',
+    targetId: 'outdoor_chiller',
+    requiredItem: null,
+    actionTime: 2.4,
+    points: 270,
+    icon: '💧',
+    isOutdoor: true
+  },
+  {
+    type: 'ransomware_attack',
+    title: 'Атака вируса-шифровальщика',
+    desc: '💀 Срочно к терминалу NOC! Введите restore-backup или decrypt для восстановления.',
+    targetType: 'terminal',
+    targetId: 'terminal_noc',
+    requiredItem: null,
+    actionTime: 0,
+    needsTerminal: true,
+    points: 290,
+    icon: '☣️',
+    isOutdoor: false
   }
+];
+
+export const CAREER_TITLES = [
+  { minScore: 0, title: 'Стажер-эникейщик', icon: '🐣', color: '#94a3b8' },
+  { minScore: 400, title: 'Младший Helpdesk', icon: '🔧', color: '#38bdf8' },
+  { minScore: 900, title: 'Системный администратор', icon: '💻', color: '#818cf8' },
+  { minScore: 1600, title: 'DevOps Инженер', icon: '🚀', color: '#10b981' },
+  { minScore: 2500, title: 'Principal Cloud Architect', icon: '🧙‍♂️', color: '#f59e0b' }
+];
+
+export function getCareerTitle(score = 0) {
+  let rank = CAREER_TITLES[0];
+  for (const r of CAREER_TITLES) {
+    if (score >= r.minScore) rank = r;
+  }
+  return rank;
+}
+
+export const QUICK_PINGS = [
+  { id: 'need_extinguisher', label: 'Нужен огнетушитель!', icon: '🧯', color: '#ef4444' },
+  { id: 'going_outdoor', label: 'Бегу на улицу!', icon: '🌲', color: '#10b981' },
+  { id: 'need_server', label: 'Соберите сервер!', icon: '🚀', color: '#8b5cf6' },
+  { id: 'fixing_power', label: 'Чиню рубильник!', icon: '⚡', color: '#f59e0b' },
+  { id: 'need_help', label: 'Срочно помоги здесь!', icon: '🆘', color: '#f43f5e' },
+  { id: 'good_job', label: 'Красава! Так держать!', icon: '👍', color: '#38bdf8' }
 ];
 
 export const SHIFT_LEVELS = [

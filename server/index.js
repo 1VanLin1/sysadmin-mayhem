@@ -71,6 +71,10 @@ function getOrCreateRoom(roomId, mode = 'coop') {
 }
 
 io.on('connection', (socket) => {
+  socket.on('ping_check', (data) => {
+    socket.emit('pong_check', data);
+  });
+
   socket.on('join_game', ({ roomId, username, color, mode, withBot, dbUsername }) => {
     const targetRoomId = (roomId || 'DATA-1').trim().toUpperCase();
     const targetMode = mode === 'pvp' ? 'pvp' : 'coop';

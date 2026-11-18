@@ -35,7 +35,7 @@ export class GameRenderer {
     });
   }
 
-  render(gameState, myPlayerId) {
+  render(gameState, myPlayerId, quickPings = []) {
     const { ctx, canvas } = this;
     this.tick += 1;
 
@@ -50,17 +50,22 @@ export class GameRenderer {
     // 3. Draw Particles (Smoke, Sparks, Steam)
     this.updateAndDrawParticles(gameState);
 
-    // 4. Draw Players
+    // 4. Draw Quick Ping Beacons on floor
+    this.drawQuickPings(quickPings);
+
+    // 5. Draw Players (with Interpolation & Prediction)
     if (gameState.players) {
+      const now = Date.now();
       for (const p of gameState.players) {
-        this.drawPlayer(p, p.id === myPlayerId);
+        const activePing = quickPings?.find((qp) => qp.playerId === p.id && now - qp.createdAt < 3500);
+        this.drawPlayer(p, p.id === myPlayerId, activePing);
       }
     }
 
-    // 5. Draw Floating Texts
+    // 6. Draw Floating Texts
     this.updateAndDrawFloatingTexts();
 
-    // 6. Emergency Lighting Overlay
+    // 7. Emergency Lighting Overlay
     if (!gameState.powerOnline) {
       const alpha = 0.35 + Math.sin(this.tick * 0.08) * 0.15;
       ctx.fillStyle = `rgba(239, 68, 68, ${alpha})`;
@@ -70,6 +75,35 @@ export class GameRenderer {
       ctx.font = 'bold 15px "JetBrains Mono"';
       ctx.textAlign = 'center';
       ctx.fillText('⚡ ВНИМАНИЕ: СБОЙ ПИТАНИЯ! ПЕРЕЗАПУСТИТЕ PDU ИЛИ ДИЗЕЛЬ-ГЕНЕРАТОР ВО ДВОРЕ!', canvas.width / 2, 35);
+    }
+  }
+
+  drawQuickPings(quickPings) {
+    const { ctx } = this;
+    const now = Date.now();
+    for (const qp of quickPings || []) {
+      const age = now - qp.createdAt;
+      if (age > 4000) continue;
+      const alpha = Math.max(0, 1 - age / 4000);
+      const ringR = 15 + ((age / 1000) % 1) * 35;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = qp.color || '#38bdf8';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(qp.x, qp.y, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = qp.color || '#38bdf8';
+      ctx.beginPath();
+      ctx.arc(qp.x, qp.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.font = '20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(qp.icon || '📍', qp.x, qp.y - 12);
+      ctx.restore();
     }
   }
 
@@ -429,28 +463,30 @@ export class GameRenderer {
     }
   }
 
-  drawPlayer(player, isMe) {
+  drawPlayer(player, isMe, activePing) {
     const { ctx } = this;
     const r = MAP_CONFIG.playerRadius;
+    const px = player.renderX !== undefined ? player.renderX : player.x;
+    const py = player.renderY !== undefined ? player.renderY : player.y;
 
     // Turbo Sprint Trail
     if (player.hasCoffeeBoost && (player.vx !== 0 || player.vy !== 0)) {
       ctx.fillStyle = 'rgba(245, 158, 11, 0.35)';
       ctx.beginPath();
-      ctx.arc(player.x - player.vx * 2, player.y - player.vy * 2, r * 1.1, 0, Math.PI * 2);
+      ctx.arc(px - player.vx * 2, py - player.vy * 2, r * 1.1, 0, Math.PI * 2);
       ctx.fill();
     }
 
     // Shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
     ctx.beginPath();
-    ctx.ellipse(player.x, player.y + r, r, r * 0.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(px, py + r, r, r * 0.5, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Body Circle
     ctx.fillStyle = player.color;
     ctx.beginPath();
-    ctx.arc(player.x, player.y, r, 0, Math.PI * 2);
+    ctx.arc(px, py, r, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.strokeStyle = isMe ? '#ffffff' : '#0f172a';
@@ -460,13 +496,13 @@ export class GameRenderer {
     // Head / Face
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(player.x, player.y - 2, 7, 0, Math.PI * 2);
+    ctx.arc(px, py - 2, 7, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = '#0f172a';
     ctx.beginPath();
-    ctx.arc(player.x - 2, player.y - 3, 2, 0, Math.PI * 2);
-    ctx.arc(player.x + 2, player.y - 3, 2, 0, Math.PI * 2);
+    ctx.arc(px - 2, py - 3, 2, 0, Math.PI * 2);
+    ctx.arc(px + 2, py - 3, 2, 0, Math.PI * 2);
     ctx.fill();
 
     // Active tool in hands
@@ -481,25 +517,25 @@ export class GameRenderer {
       };
       const emoji = itemEmojis[currentTool] || '❓';
       ctx.font = '18px sans-serif';
-      ctx.fillText(emoji, player.x + r + 2, player.y - 4);
+      ctx.fillText(emoji, px + r + 2, py - 4);
     }
 
     // Sabotaged Glitch effect
     if (player.isSabotaged) {
       ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
       ctx.beginPath();
-      ctx.roundRect(player.x - 50, player.y - r - 48, 100, 18, 5);
+      ctx.roundRect(px - 50, py - r - 48, 100, 18, 5);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 9px "JetBrains Mono"';
       ctx.textAlign = 'center';
-      ctx.fillText('😵 САБОТАЖ!', player.x, player.y - r - 35);
+      ctx.fillText('😵 САБОТАЖ!', px, py - r - 35);
     }
 
     // Name tag & Score badge above head
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
     ctx.beginPath();
-    ctx.roundRect(player.x - 45, player.y - r - 26, 90, 20, 6);
+    ctx.roundRect(px - 45, py - r - 26, 90, 20, 6);
     ctx.fill();
     ctx.strokeStyle = isMe ? '#6366f1' : '#334155';
     ctx.lineWidth = 1;
@@ -508,18 +544,36 @@ export class GameRenderer {
     ctx.fillStyle = isMe ? '#a5b4fc' : '#ffffff';
     ctx.font = 'bold 10px "JetBrains Mono"';
     ctx.textAlign = 'center';
-    ctx.fillText(player.name, player.x, player.y - r - 12);
+    ctx.fillText(player.name, px, py - r - 12);
 
-    // Smart Bot State Bubble (if Васильич has active task)
-    if (player.isBot && player.botState && !player.isSabotaged) {
+    // Quick Ping Speech Bubble (from [G] wheel)
+    if (activePing) {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+      ctx.strokeStyle = activePing.color || '#38bdf8';
+      ctx.lineWidth = 1.5;
+      const msg = `${activePing.icon} ${activePing.label}`;
+      ctx.font = 'bold 10px "JetBrains Mono"';
+      const msgW = ctx.measureText(msg).width + 16;
+      ctx.beginPath();
+      ctx.roundRect(px - msgW / 2, py - r - 58, msgW, 22, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.fillText(msg, px, py - r - 43);
+    }
+
+    // Smart Bot State Bubble (if Васильич has active task and no ping)
+    if (player.isBot && player.botState && !player.isSabotaged && !activePing) {
       ctx.fillStyle = 'rgba(225, 29, 72, 0.95)';
       ctx.beginPath();
-      ctx.roundRect(player.x - 65, player.y - r - 48, 130, 18, 5);
+      ctx.roundRect(px - 65, py - r - 48, 130, 18, 5);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 9px "JetBrains Mono"';
       ctx.textAlign = 'center';
-      ctx.fillText(player.botState, player.x, player.y - r - 35);
+      ctx.fillText(player.botState, px, py - r - 35);
     }
 
     // Interaction Progress Bar
@@ -527,13 +581,13 @@ export class GameRenderer {
       const pbW = 44;
       const pbH = 6;
       ctx.fillStyle = '#090d16';
-      ctx.fillRect(player.x - pbW / 2, player.y - r - 34, pbW, pbH);
+      ctx.fillRect(px - pbW / 2, py - r - 34, pbW, pbH);
 
       ctx.fillStyle = '#22c55e';
-      ctx.fillRect(player.x - pbW / 2, player.y - r - 34, pbW * (player.interactProgress / 100), pbH);
+      ctx.fillRect(px - pbW / 2, py - r - 34, pbW * (player.interactProgress / 100), pbH);
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 1;
-      ctx.strokeRect(player.x - pbW / 2, player.y - r - 34, pbW, pbH);
+      ctx.strokeRect(px - pbW / 2, py - r - 34, pbW, pbH);
     }
   }
 

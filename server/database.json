@@ -114,10 +114,10 @@
       "salt": "41876fcc3844c3d1c449b41ddef928fc",
       "passwordHash": "2682548a95337b23c08dadc7b3f2e7c61579d0cdb9243e3ea72062fc75cc61fe",
       "color": "#6366f1",
-      "highScore": 2950,
-      "totalRepairs": 14,
-      "wins": 1,
-      "gamesPlayed": 3,
+      "highScore": 5250,
+      "totalRepairs": 38,
+      "wins": 2,
+      "gamesPlayed": 4,
       "createdAt": "2026-11-17T11:19:55.853Z"
     },
     {
@@ -131,6 +131,42 @@
       "wins": 0,
       "gamesPlayed": 1,
       "createdAt": "2026-11-17T11:29:36.961Z"
+    },
+    {
+      "id": "usr_1794995418145_tvk8",
+      "username": "test_admin_1794995418047",
+      "salt": "8650fb0ca41524e0c5ef4711752fa07b",
+      "passwordHash": "e13129d240461167b7c48cbddcc703463d05a9b40d8928e76113234d95da2424",
+      "color": "#10b981",
+      "highScore": 0,
+      "totalRepairs": 0,
+      "wins": 0,
+      "gamesPlayed": 0,
+      "createdAt": "2026-11-18T09:50:18.145Z"
+    },
+    {
+      "id": "usr_1794995677900_m9zp",
+      "username": "test_admin_1794995677827",
+      "salt": "f9df67519c2911733046833498295377",
+      "passwordHash": "fb1eebd3591445eefebe59d36b87b8297a9ad5bd7300918da6560fec207557f3",
+      "color": "#10b981",
+      "highScore": 0,
+      "totalRepairs": 0,
+      "wins": 0,
+      "gamesPlayed": 0,
+      "createdAt": "2026-11-18T09:54:37.900Z"
+    },
+    {
+      "id": "usr_1794997933967_0qgz",
+      "username": "test_admin_1794997933867",
+      "salt": "0b8ed5678739f258509c6713b575184a",
+      "passwordHash": "d77ca21f6aeaaa2588b8b9adf3df93f6011fcbd843d10f9ccc955eb1b6bb27a6",
+      "color": "#10b981",
+      "highScore": 0,
+      "totalRepairs": 0,
+      "wins": 0,
+      "gamesPlayed": 0,
+      "createdAt": "2026-11-18T10:32:13.967Z"
     }
   ]
 }

@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { GameRenderer } from './game/renderer';
 import { MAP_CONFIG } from './game/constants';
+import { simulateMovement } from './game/physics';
 import { HUD } from './components/HUD';
 import { Lobby } from './components/Lobby';
 import { NocTerminalModal } from './components/NocTerminalModal';
 import { GameOverModal } from './components/GameOverModal';
+import { QuickPingWheel } from './components/QuickPingWheel';
 import { audio } from './game/audio';
 
 export default function App() {
@@ -24,14 +26,23 @@ export default function App() {
   const [isMuted, setIsMuted] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalDdos, setTerminalDdos] = useState(false);
+  const [terminalRansomware, setTerminalRansomware] = useState(false);
   const [gameOverData, setGameOverData] = useState(null);
   const [coopExitPrompt, setCoopExitPrompt] = useState(null);
+  const [showPingWheel, setShowPingWheel] = useState(false);
+  const [quickPings, setQuickPings] = useState([]);
+  const [ping, setPing] = useState(24);
 
   const canvasRef = useRef(null);
   const rendererRef = useRef(null);
   const socketRef = useRef(null);
   const inputRef = useRef({ up: false, down: false, left: false, right: false });
   const interactPressedRef = useRef(false);
+  const localPosRef = useRef({ x: 100, y: 280, initialized: false });
+  const gameStateRef = useRef(gameState);
+  gameStateRef.current = gameState;
+  const quickPingsRef = useRef(quickPings);
+  quickPingsRef.current = quickPings;
 
   // 1. Initialize Socket.IO
   useEffect(() => {
@@ -47,6 +58,7 @@ export default function App() {
       setMode(mode);
       setScreen('game');
       setGameOverData(null);
+      localPosRef.current.initialized = false;
       if (roomStatus !== 'playing') {
         socket.emit('start_game');
       }
@@ -54,6 +66,18 @@ export default function App() {
 
     socket.on('game_state', (state) => {
       setGameState(state);
+    });
+
+    socket.on('pong_check', (data) => {
+      if (data && data.time) {
+        const rtt = Math.max(1, Date.now() - data.time);
+        setPing(rtt);
+      }
+    });
+
+    socket.on('player_quick_ping', (pingData) => {
+      setQuickPings((prev) => [...prev.filter((p) => Date.now() - p.createdAt < 4000), pingData]);
+      audio.playSuccess();
     });
 
     socket.on('sound_event', ({ sound }) => {
@@ -71,8 +95,9 @@ export default function App() {
       }
     });
 
-    socket.on('open_terminal', ({ hasDdos }) => {
+    socket.on('open_terminal', ({ hasDdos, hasRansomware }) => {
       setTerminalDdos(hasDdos);
+      setTerminalRansomware(hasRansomware);
       setTerminalOpen(true);
     });
 
@@ -103,6 +128,25 @@ export default function App() {
     };
   }, []);
 
+  // Periodic Ping measurement (every 2.5s)
+  useEffect(() => {
+    if (screen !== 'game') return;
+    const interval = setInterval(() => {
+      socketRef.current?.emit('ping_check', { time: Date.now() });
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [screen]);
+
+  // Clean expired quick pings
+  useEffect(() => {
+    if (quickPings.length === 0) return;
+    const cleanup = setInterval(() => {
+      const now = Date.now();
+      setQuickPings((prev) => prev.filter((p) => now - p.createdAt < 4000));
+    }, 1000);
+    return () => clearInterval(cleanup);
+  }, [quickPings.length]);
+
   // 2. Keyboard Controls (Supports both English and Russian keyboard layouts)
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -111,6 +155,12 @@ export default function App() {
       const code = e.code;
       const key = e.key ? e.key.toLowerCase() : '';
       let changed = false;
+
+      // QUICK PING WHEEL: KeyG, 'g', 'п'
+      if (code === 'KeyG' || key === 'g' || key === 'п') {
+        setShowPingWheel((prev) => !prev);
+        return;
+      }
 
       // UP: KeyW, ArrowUp, 'w', 'ц'
       if (code === 'KeyW' || code === 'ArrowUp' || key === 'w' || key === 'ц') {
@@ -218,17 +268,109 @@ export default function App() {
     };
   }, [screen, terminalOpen]);
 
-  // 3. Setup Canvas Renderer and 60FPS Render Loop
+  // 3. Setup Canvas Renderer and 60FPS Render Loop with Client-Side Prediction & Entity Interpolation
   useEffect(() => {
     if (screen !== 'game' || !canvasRef.current) return;
 
     rendererRef.current = new GameRenderer(canvasRef.current);
 
     let animId;
+    let lastFrameTime = performance.now();
+    let lastMoveSend = 0;
+
     const renderLoop = () => {
-      if (rendererRef.current && canvasRef.current) {
-        rendererRef.current.render(gameState, myPlayerId);
+      const now = performance.now();
+      const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+      lastFrameTime = now;
+
+      const currentGS = gameStateRef.current;
+      const myPlayer = currentGS.players?.find((p) => p.id === myPlayerId);
+
+      if (myPlayer) {
+        if (!localPosRef.current.initialized) {
+          localPosRef.current = { x: myPlayer.x, y: myPlayer.y, initialized: true };
+        }
+
+        // --- CLIENT-SIDE PREDICTION WITH FRAME-INDEPENDENT DELTA TIME ---
+        let speedMultiplier = 1;
+        if (myPlayer.hasCoffeeBoost) speedMultiplier = MAP_CONFIG.coffeeSpeedBuff / MAP_CONFIG.baseSpeed;
+        if (myPlayer.isSabotaged) speedMultiplier *= 0.5;
+
+        let dx = 0;
+        let dy = 0;
+        if (inputRef.current.left) dx -= 1;
+        if (inputRef.current.right) dx += 1;
+        if (inputRef.current.up) dy -= 1;
+        if (inputRef.current.down) dy += 1;
+
+        if (dx !== 0 && dy !== 0) {
+          dx *= 0.7071;
+          dy *= 0.7071;
+        }
+
+        const isMoving = dx !== 0 || dy !== 0;
+
+        if (isMoving) {
+          // Base speed is 5.6 px per 40ms tick = 140 px/s
+          const pixelsPerSec = MAP_CONFIG.baseSpeed * 25 * speedMultiplier;
+          const moveDistX = dx * pixelsPerSec * dt;
+          const moveDistY = dy * pixelsPerSec * dt;
+
+          const next = simulateMovement(localPosRef.current.x, localPosRef.current.y, moveDistX, moveDistY);
+          localPosRef.current.x = next.x;
+          localPosRef.current.y = next.y;
+
+          // Stream client position to server at ~30Hz for responsive sync
+          if (now - lastMoveSend >= 33 && socketRef.current) {
+            lastMoveSend = now;
+            socketRef.current.emit('player_move', {
+              x: localPosRef.current.x,
+              y: localPosRef.current.y,
+              vx: dx * MAP_CONFIG.baseSpeed * speedMultiplier,
+              vy: dy * MAP_CONFIG.baseSpeed * speedMultiplier
+            });
+          }
+        }
+
+        // Reconciliation with authoritative server position
+        const errX = myPlayer.x - localPosRef.current.x;
+        const errY = myPlayer.y - localPosRef.current.y;
+        const distErr = Math.hypot(errX, errY);
+
+        if (distErr > 70) {
+          // Hard snap only on huge discrepancy (e.g., teleport, respawn, map reset)
+          localPosRef.current.x = myPlayer.x;
+          localPosRef.current.y = myPlayer.y;
+        } else if (!isMoving && distErr > 1) {
+          // Smoothly settle to rest position when not moving
+          localPosRef.current.x += errX * 0.2;
+          localPosRef.current.y += errY * 0.2;
+        }
+
+        // Override render position for instant 0ms player reaction
+        myPlayer.renderX = localPosRef.current.x;
+        myPlayer.renderY = localPosRef.current.y;
       }
+
+      // --- ENTITY INTERPOLATION (Smooth 60 FPS for other players & bot) ---
+      if (currentGS.players) {
+        for (const p of currentGS.players) {
+          if (p.id !== myPlayerId) {
+            if (p.renderX === undefined) {
+              p.renderX = p.x;
+              p.renderY = p.y;
+            } else {
+              p.renderX += (p.x - p.renderX) * 0.28;
+              p.renderY += (p.y - p.renderY) * 0.28;
+            }
+          }
+        }
+      }
+
+      if (rendererRef.current && canvasRef.current) {
+        rendererRef.current.render(currentGS, myPlayerId, quickPingsRef.current);
+      }
+
       animId = requestAnimationFrame(renderLoop);
     };
 
@@ -237,7 +379,7 @@ export default function App() {
     return () => {
       cancelAnimationFrame(animId);
     };
-  }, [screen, gameState, myPlayerId]);
+  }, [screen, myPlayerId]);
 
   const handleJoinGame = (config) => {
     socketRef.current?.emit('join_game', config);
@@ -258,6 +400,7 @@ export default function App() {
 
   const handlePlayAgain = () => {
     setGameOverData(null);
+    localPosRef.current.initialized = false;
     socketRef.current?.emit('start_game');
   };
 
@@ -282,11 +425,24 @@ export default function App() {
     setCoopExitPrompt(null);
   };
 
+  const handleSelectPing = (ping) => {
+    setShowPingWheel(false);
+    socketRef.current?.emit('quick_ping', {
+      id: ping.id,
+      label: ping.label,
+      icon: ping.icon,
+      color: ping.color
+    });
+  };
+
   const handleReturnToLobby = () => {
     socketRef.current?.emit('leave_game');
     setScreen('lobby');
     setGameOverData(null);
     setCoopExitPrompt(null);
+    setShowPingWheel(false);
+    setQuickPings([]);
+    localPosRef.current.initialized = false;
     setGameState({
       players: [],
       activeIncidents: [],
@@ -335,14 +491,26 @@ export default function App() {
             onRequestCoopExit={handleRequestCoopExit}
             onRespondCoopExit={handleRespondCoopExit}
             coopExitPrompt={coopExitPrompt}
+            onOpenPingWheel={() => setShowPingWheel(true)}
+            quickPings={quickPings}
+            ping={ping}
             isMuted={isMuted}
             onToggleMute={handleToggleMute}
           />
+
+          {/* Quick Ping Wheel Modal */}
+          {showPingWheel && (
+            <QuickPingWheel
+              onSelectPing={handleSelectPing}
+              onClose={() => setShowPingWheel(false)}
+            />
+          )}
 
           {/* Interactive NOC Terminal Modal */}
           {terminalOpen && (
             <NocTerminalModal
               hasDdos={terminalDdos}
+              hasRansomware={terminalRansomware}
               onCommand={handleTerminalCommand}
               onClose={() => setTerminalOpen(false)}
             />
