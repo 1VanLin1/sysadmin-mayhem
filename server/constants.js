@@ -1,1 +1,1 @@
-export { MAP_CONFIG, ZONES, INCIDENT_TEMPLATES, SHIFT_LEVELS, ABILITIES } from '../src/game/constants.js';
+export { MAP_CONFIG, ZONES, INCIDENT_TEMPLATES, SHIFT_LEVELS, ABILITIES, ADMIN_CLASSES, getAdminClass, COOLANT_PUDDLES } from '../src/game/constants.js';

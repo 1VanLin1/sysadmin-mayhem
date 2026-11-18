@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { GameRenderer } from './game/renderer';
 import { MAP_CONFIG } from './game/constants';
-import { simulateMovement } from './game/physics';
+import { simulateMovement, isPlayerOnCoolant } from './game/physics';
 import { HUD } from './components/HUD';
 import { Lobby } from './components/Lobby';
 import { NocTerminalModal } from './components/NocTerminalModal';
 import { GameOverModal } from './components/GameOverModal';
 import { QuickPingWheel } from './components/QuickPingWheel';
+import { MinigameModal } from './components/MinigameModal';
 import { audio } from './game/audio';
 
 export default function App() {
@@ -31,6 +32,7 @@ export default function App() {
   const [coopExitPrompt, setCoopExitPrompt] = useState(null);
   const [showPingWheel, setShowPingWheel] = useState(false);
   const [quickPings, setQuickPings] = useState([]);
+  const [minigameIncident, setMinigameIncident] = useState(null);
   const [ping, setPing] = useState(24);
 
   const canvasRef = useRef(null);
@@ -39,6 +41,7 @@ export default function App() {
   const inputRef = useRef({ up: false, down: false, left: false, right: false });
   const interactPressedRef = useRef(false);
   const localPosRef = useRef({ x: 100, y: 280, initialized: false });
+  const momentumRef = useRef({ vx: 0, vy: 0 });
   const gameStateRef = useRef(gameState);
   gameStateRef.current = gameState;
   const quickPingsRef = useRef(quickPings);
@@ -215,6 +218,17 @@ export default function App() {
         socketRef.current?.emit('use_ability', { ability: 'sabotage' });
       }
 
+      // FAST MINIGAME HOTKEY M:
+      if (code === 'KeyM' || key === 'm' || key === 'ь') {
+        const curPos = localPosRef.current;
+        const inc = gameStateRef.current.activeIncidents?.find((i) => {
+          return Math.hypot(curPos.x - i.targetX, curPos.y - i.targetY) <= 85;
+        });
+        if (inc) {
+          setMinigameIncident(inc);
+        }
+      }
+
       if (changed) {
         socketRef.current?.emit('player_input', inputRef.current);
       }
@@ -293,7 +307,8 @@ export default function App() {
 
         // --- CLIENT-SIDE PREDICTION WITH FRAME-INDEPENDENT DELTA TIME ---
         let speedMultiplier = 1;
-        if (myPlayer.hasCoffeeBoost) speedMultiplier = MAP_CONFIG.coffeeSpeedBuff / MAP_CONFIG.baseSpeed;
+        if (myPlayer.adminClass === 'netops') speedMultiplier *= 1.15;
+        if (myPlayer.hasCoffeeBoost) speedMultiplier *= (MAP_CONFIG.coffeeSpeedBuff / MAP_CONFIG.baseSpeed);
         if (myPlayer.isSabotaged) speedMultiplier *= 0.5;
 
         let dx = 0;
@@ -309,13 +324,36 @@ export default function App() {
         }
 
         const isMoving = dx !== 0 || dy !== 0;
+        const onCoolant = isPlayerOnCoolant(localPosRef.current.x, localPosRef.current.y, currentGS.activeIncidents);
+        const pixelsPerSec = MAP_CONFIG.baseSpeed * 25 * speedMultiplier;
+
+        let moveDistX = 0;
+        let moveDistY = 0;
 
         if (isMoving) {
-          // Base speed is 5.6 px per 40ms tick = 140 px/s
-          const pixelsPerSec = MAP_CONFIG.baseSpeed * 25 * speedMultiplier;
-          const moveDistX = dx * pixelsPerSec * dt;
-          const moveDistY = dy * pixelsPerSec * dt;
+          const rawMoveX = dx * pixelsPerSec * dt;
+          const rawMoveY = dy * pixelsPerSec * dt;
 
+          if (onCoolant) {
+            momentumRef.current.vx = momentumRef.current.vx * 0.92 + rawMoveX * 0.08;
+            momentumRef.current.vy = momentumRef.current.vy * 0.92 + rawMoveY * 0.08;
+            moveDistX = rawMoveX * 0.45 + momentumRef.current.vx * 0.55;
+            moveDistY = rawMoveY * 0.45 + momentumRef.current.vy * 0.55;
+          } else {
+            momentumRef.current.vx = 0;
+            momentumRef.current.vy = 0;
+            moveDistX = rawMoveX;
+            moveDistY = rawMoveY;
+          }
+        } else if (onCoolant && (Math.abs(momentumRef.current.vx) > 0.05 || Math.abs(momentumRef.current.vy) > 0.05)) {
+          // Sliding on ice when keys are released!
+          moveDistX = momentumRef.current.vx;
+          moveDistY = momentumRef.current.vy;
+          momentumRef.current.vx *= 0.94;
+          momentumRef.current.vy *= 0.94;
+        }
+
+        if (moveDistX !== 0 || moveDistY !== 0) {
           const next = simulateMovement(localPosRef.current.x, localPosRef.current.y, moveDistX, moveDistY);
           localPosRef.current.x = next.x;
           localPosRef.current.y = next.y;
@@ -454,7 +492,20 @@ export default function App() {
     });
   };
 
+  const handleMinigameComplete = (type) => {
+    if (minigameIncident) {
+      socketRef.current?.emit('minigame_complete', {
+        incidentId: minigameIncident.id,
+        type
+      });
+      setMinigameIncident(null);
+    }
+  };
+
   const myPlayer = gameState.players?.find((p) => p.id === myPlayerId);
+  const nearbyIncident = gameState.activeIncidents?.find((inc) => {
+    return Math.hypot(localPosRef.current.x - inc.targetX, localPosRef.current.y - inc.targetY) <= 85;
+  });
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#080c14] flex items-center justify-center">
@@ -484,6 +535,9 @@ export default function App() {
             targetRepairs={gameState.targetRepairs}
             activeIncidents={gameState.activeIncidents}
             powerOnline={gameState.powerOnline}
+            blackout={gameState.blackout}
+            hasNearbyIncident={!!nearbyIncident}
+            onOpenMinigame={() => setMinigameIncident(nearbyIncident)}
             onSelectTool={handleSelectTool}
             onUseAbility={handleUseAbility}
             onDropItem={handleDropItem}
@@ -503,6 +557,15 @@ export default function App() {
             <QuickPingWheel
               onSelectPing={handleSelectPing}
               onClose={() => setShowPingWheel(false)}
+            />
+          )}
+
+          {/* Interactive Minigame Modal (Wire connect / RAID rebuild) */}
+          {minigameIncident && (
+            <MinigameModal
+              incident={minigameIncident}
+              onClose={() => setMinigameIncident(null)}
+              onComplete={handleMinigameComplete}
             />
           )}
 

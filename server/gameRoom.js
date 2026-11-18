@@ -1,4 +1,4 @@
-import { MAP_CONFIG, ZONES, INCIDENT_TEMPLATES, SHIFT_LEVELS, ABILITIES } from './constants.js';
+import { MAP_CONFIG, ZONES, INCIDENT_TEMPLATES, SHIFT_LEVELS, ABILITIES, ADMIN_CLASSES, getAdminClass } from './constants.js';
 import { db } from './db.js';
 import { simulateMovement, resolveCollisions } from '../src/game/physics.js';
 
@@ -33,9 +33,11 @@ export class GameRoom {
     this.incidentCounter = 0;
     this.lastIncidentTime = 0;
     this.tickInterval = null;
+    this.cat = { x: 380, y: 280, targetX: 380, targetY: 280, purringUntil: 0, nextMoveAt: Date.now() + 4000 };
+    this.blackout = { active: false, upsRemaining: 45, hasTriggered: false };
   }
 
-  addPlayer(socket, username, color, isBot = false, dbUsername = null) {
+  addPlayer(socket, username, color, isBot = false, dbUsername = null, adminClass = 'netops') {
     if (isBot) {
       const existingBot = Array.from(this.players.values()).find((p) => p.isBot);
       if (existingBot) return existingBot;
@@ -55,6 +57,7 @@ export class GameRoom {
       name: username || (isBot ? 'Васильич (Senior AI)' : `Админ_${this.players.size + 1}`),
       dbUsername: dbUsername || (isBot ? null : username),
       color: color || (isBot ? '#e11d48' : '#6366f1'),
+      adminClass: adminClass || (isBot ? 'hardware' : 'netops'),
       x: spawn.x,
       y: spawn.y,
       vx: 0,
@@ -66,6 +69,7 @@ export class GameRoom {
       coffeeUntil: 0,
       energyUntil: 0,
       sabotagedUntil: 0,
+      catBlessingUntil: 0,
       cooldowns: { sprint: 0, overclock: 0, sabotage: 0 },
       isInteracting: false,
       interactProgress: 0,
@@ -265,6 +269,14 @@ export class GameRoom {
       });
     });
 
+    socket.on('pet_cat', () => {
+      this.handlePetCat(player);
+    });
+
+    socket.on('minigame_complete', ({ incidentId, type }) => {
+      this.handleMinigameComplete(player, incidentId, type);
+    });
+
     socket.on('start_game', () => {
       if (this.status === 'lobby' || this.status === 'game_over') {
         this.startGame();
@@ -302,6 +314,8 @@ export class GameRoom {
     this.activeIncidents = [];
     this.workbenchState = { hasChassis: false, buildProgress: 0, hasServerReady: false };
     this.powerOnline = true;
+    this.cat = { x: 380, y: 280, targetX: 380, targetY: 280, purringUntil: 0, nextMoveAt: Date.now() + 4000 };
+    this.blackout = { active: false, upsRemaining: 45, hasTriggered: false };
 
     for (const player of this.players.values()) {
       player.score = 0;
@@ -311,6 +325,7 @@ export class GameRoom {
       player.coffeeUntil = 0;
       player.energyUntil = 0;
       player.sabotagedUntil = 0;
+      player.catBlessingUntil = 0;
       player.cooldowns = { sprint: 0, overclock: 0, sabotage: 0 };
       player.interactProgress = 0;
       player.isInteracting = false;
@@ -348,14 +363,77 @@ export class GameRoom {
     this.pendingCoopExit = null;
     this.workbenchState = { hasChassis: false, buildProgress: 0, hasServerReady: false };
     this.powerOnline = true;
+    this.cat = { x: 380, y: 280, targetX: 380, targetY: 280, purringUntil: 0, nextMoveAt: Date.now() + 4000 };
+    this.blackout = { active: false, upsRemaining: 45, hasTriggered: false };
+
     for (const player of this.players.values()) {
       player.score = 0;
       player.repairsCount = 0;
       player.isInteracting = false;
       player.interactProgress = 0;
       player.targetZoneId = null;
+      player.catBlessingUntil = 0;
       player.cooldowns = { sprint: 0, overclock: 0, sabotage: 0 };
     }
+  }
+
+  handlePetCat(player) {
+    if (this.status !== 'playing') return;
+    const dist = Math.hypot(player.x - this.cat.x, player.y - this.cat.y);
+    if (dist > 85) return;
+
+    player.catBlessingUntil = Date.now() + 15000;
+    this.cat.purringUntil = Date.now() + 8000;
+    this.io.to(this.id).emit('sound_event', { sound: 'cat_purr', x: this.cat.x, y: this.cat.y });
+    this.io.to(this.id).emit('floating_text', {
+      text: '😻 Байт довольно замурчал! +20% к скорости починки на 15 сек!',
+      color: '#f43f5e',
+      x: player.x,
+      y: player.y - 25
+    });
+    this.broadcastState();
+  }
+
+  handleMinigameComplete(player, incidentId, type) {
+    if (this.status !== 'playing') return;
+    const incidentIndex = this.activeIncidents.findIndex((inc) => inc.id === incidentId);
+    if (incidentIndex === -1) return;
+
+    const incident = this.activeIncidents[incidentIndex];
+    const zone = ZONES.find((z) => z.id === incident.targetZoneId);
+    if (zone) {
+      const closestX = Math.max(zone.x, Math.min(player.x, zone.x + zone.w));
+      const closestY = Math.max(zone.y, Math.min(player.y, zone.y + zone.h));
+      if (Math.hypot(player.x - closestX, player.y - closestY) > 95) return;
+    }
+
+    this.activeIncidents.splice(incidentIndex, 1);
+    const earnedPoints = incident.points + 60; // 60 bonus XP for minigame!
+    player.score += earnedPoints;
+    player.repairsCount += 1;
+    this.levelRepairs += 1;
+    this.sla = Math.min(100, this.sla + 18);
+
+    if (incident.type === 'power_trip') {
+      this.powerOnline = true;
+    }
+
+    this.handlePlayerInteractStop(player);
+    this.io.to(this.id).emit('sound_event', { sound: 'success', x: player.x, y: player.y });
+    this.io.to(this.id).emit('incident_resolved', {
+      incidentId: incident.id,
+      resolvedBy: player.name,
+      points: earnedPoints
+    });
+    this.io.to(this.id).emit('floating_text', {
+      text: `⚡ +${earnedPoints} XP! Экспресс-починка выполнена!`,
+      color: '#38bdf8',
+      x: player.x,
+      y: player.y - 25
+    });
+
+    this.checkLevelProgression();
+    this.broadcastState();
   }
 
   gameTick() {
@@ -401,6 +479,45 @@ export class GameRoom {
       return;
     }
 
+    // 5. Cat AI roaming
+    const nowTime = Date.now();
+    if (nowTime >= this.cat.purringUntil && nowTime >= this.cat.nextMoveAt) {
+      const catSpots = [
+        { x: 260, y: 200 }, { x: 440, y: 280 }, { x: 600, y: 250 },
+        { x: 380, y: 480 }, { x: 200, y: 480 }, { x: 380, y: 280 }
+      ];
+      const nextSpot = catSpots[Math.floor(Math.random() * catSpots.length)];
+      this.cat.targetX = nextSpot.x;
+      this.cat.targetY = nextSpot.y;
+      this.cat.nextMoveAt = nowTime + 6000 + Math.random() * 4000;
+    }
+    if (nowTime >= this.cat.purringUntil) {
+      this.cat.x += (this.cat.targetX - this.cat.x) * 0.04;
+      this.cat.y += (this.cat.targetY - this.cat.y) * 0.04;
+    }
+
+    // 6. Global Blackout Event
+    if (!this.blackout.hasTriggered && this.gameTime <= 135 && this.gameTime >= 40 && this.status === 'playing') {
+      this.blackout.active = true;
+      this.blackout.hasTriggered = true;
+      this.powerOnline = false;
+      this.blackout.upsRemaining = 45;
+      this.io.to(this.id).emit('sound_event', { sound: 'alarm', x: 600, y: 360 });
+      this.io.to(this.id).emit('floating_text', {
+        text: '🚨 БЛЭКАУТ! СЕТЬ ОБЕСТОЧЕНА! БЕГИТЕ К ДГУ НА УЛИЦУ!',
+        color: '#ef4444',
+        x: 600,
+        y: 300
+      });
+    }
+
+    if (this.blackout.active) {
+      this.blackout.upsRemaining -= 0.04;
+      if (this.blackout.upsRemaining <= 0) {
+        this.sla = Math.max(0, this.sla - 0.08); // Rapid SLA drain when UPS dies!
+      }
+    }
+
     this.broadcastState();
   }
 
@@ -426,8 +543,24 @@ export class GameRoom {
   }
 
   handlePlayerInteractStart(player) {
+    // Check if player is near Byte the Cat to pet it
+    const distToCat = Math.hypot(player.x - this.cat.x, player.y - this.cat.y);
+    if (distToCat <= 65) {
+      this.handlePetCat(player);
+      return;
+    }
+
     const zone = this.getNearestZone(player);
     if (!zone) return;
+
+    // Direct generator start during Blackout
+    if (this.blackout.active && zone.id === 'outdoor_generator') {
+      player.isInteracting = true;
+      player.targetZoneId = zone.id;
+      player.interactProgress = 0;
+      this.io.to(this.id).emit('sound_event', { sound: 'repairing', x: zone.x, y: zone.y });
+      return;
+    }
 
     // Workbench
     if (zone.type === 'workbench') {
@@ -528,11 +661,42 @@ export class GameRoom {
       return;
     }
 
-    const speedMultiplier = Date.now() < player.energyUntil ? 2.5 : 1.0;
+    let speedMultiplier = Date.now() < player.energyUntil ? 2.5 : 1.0;
+    if (Date.now() < player.catBlessingUntil) speedMultiplier *= 1.2;
+
+    const adminClass = getAdminClass(player.adminClass);
+
+    // Blackout resolution via outdoor generator
+    if (this.blackout.active && zone.id === 'outdoor_generator') {
+      let genSpeed = 3.2 * speedMultiplier;
+      if (adminClass && adminClass.boostTypes.includes('generator_start')) genSpeed *= 1.8;
+      player.interactProgress += genSpeed;
+
+      if (player.interactProgress >= 100) {
+        this.blackout.active = false;
+        this.powerOnline = true;
+        player.score += 400;
+        player.repairsCount += 1;
+        this.levelRepairs += 1;
+        this.sla = Math.min(100, this.sla + 25);
+        this.handlePlayerInteractStop(player);
+        this.io.to(this.id).emit('sound_event', { sound: 'success', x: zone.x, y: zone.y });
+        this.io.to(this.id).emit('floating_text', {
+          text: '⚡ ДГУ ЗАПУЩЕН! ПИТАНИЕ ВОССТАНОВЛЕНО! +400 XP!',
+          color: '#22c55e',
+          x: player.x,
+          y: player.y - 30
+        });
+        this.checkLevelProgression();
+      }
+      return;
+    }
 
     // Workbench assembly
     if (zone.type === 'workbench' && this.workbenchState.hasChassis) {
-      player.interactProgress += 2.8 * speedMultiplier;
+      let wbSpeed = 2.8 * speedMultiplier;
+      if (adminClass && adminClass.boostTypes.includes('deploy_server')) wbSpeed *= 1.8;
+      player.interactProgress += wbSpeed;
       this.workbenchState.buildProgress = player.interactProgress;
 
       if (player.interactProgress >= 100) {
@@ -555,7 +719,11 @@ export class GameRoom {
     const incidentIndex = this.activeIncidents.findIndex((inc) => inc.targetZoneId === zone.id);
     if (incidentIndex !== -1) {
       const incident = this.activeIncidents[incidentIndex];
-      player.interactProgress += 2.6 * speedMultiplier;
+      let incSpeed = 2.6 * speedMultiplier;
+      if (adminClass && adminClass.boostTypes.includes(incident.type)) {
+        incSpeed *= 1.8;
+      }
+      player.interactProgress += incSpeed;
 
       if (player.interactProgress >= 100) {
         this.activeIncidents.splice(incidentIndex, 1);
@@ -883,6 +1051,7 @@ export class GameRoom {
         id: p.id,
         name: p.name,
         color: p.color,
+        adminClass: p.adminClass || 'netops',
         x: Math.round(p.x),
         y: Math.round(p.y),
         activeTool: p.activeTool,
@@ -891,12 +1060,22 @@ export class GameRoom {
         hasCoffeeBoost: Date.now() < p.coffeeUntil,
         hasEnergyBoost: Date.now() < p.energyUntil,
         isSabotaged: Date.now() < p.sabotagedUntil,
+        hasCatBlessing: Date.now() < p.catBlessingUntil,
         cooldowns: p.cooldowns || { sprint: 0, overclock: 0, sabotage: 0 },
         isInteracting: p.isInteracting,
         interactProgress: Math.round(p.interactProgress),
         isBot: p.isBot,
         botState: p.botState
       })),
+      cat: {
+        x: Math.round(this.cat.x),
+        y: Math.round(this.cat.y),
+        isPurring: Date.now() < this.cat.purringUntil
+      },
+      blackout: {
+        active: this.blackout.active,
+        upsRemaining: Math.max(0, Math.round(this.blackout.upsRemaining))
+      },
       activeIncidents: this.activeIncidents,
       sla: Math.round(this.sla),
       gameTime: Math.max(0, Math.round(this.gameTime)),

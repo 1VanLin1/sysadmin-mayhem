@@ -380,6 +380,45 @@ export const QUICK_PINGS = [
   { id: 'good_job', label: 'Красава! Так держать!', icon: '👍', color: '#38bdf8' }
 ];
 
+export const ADMIN_CLASSES = [
+  {
+    id: 'netops',
+    name: 'Сетевик (NetOps)',
+    icon: '🌐',
+    color: '#38bdf8',
+    desc: '+15% скорость бега, кабели и спутник чинятся на 80% быстрее',
+    speedMultiplier: 1.15,
+    boostTypes: ['cable_disconnect', 'satellite_align', 'ddos_attack']
+  },
+  {
+    id: 'hardware',
+    name: 'Железячник (Hardware)',
+    icon: '🔧',
+    color: '#f59e0b',
+    desc: 'Монтаж серверов и RAID NVMe диски чинятся в 2 раза быстрее',
+    speedMultiplier: 1.0,
+    boostTypes: ['hdd_failure', 'deploy_server']
+  },
+  {
+    id: 'facility',
+    name: 'Инженер ИЦХ (Facility)',
+    icon: '🧯',
+    color: '#ef4444',
+    desc: 'Тушит пожары, чинит чиллеры и ДГУ на 100% быстрее',
+    speedMultiplier: 1.0,
+    boostTypes: ['fire', 'radiator_jam', 'coolant_leak', 'generator_start', 'power_trip']
+  }
+];
+
+export function getAdminClass(classId) {
+  return ADMIN_CLASSES.find((c) => c.id === classId) || ADMIN_CLASSES[0];
+}
+
+export const COOLANT_PUDDLES = [
+  { id: 'puddle_indoor', x: 420, y: 460, radius: 75 },
+  { id: 'puddle_outdoor', x: 930, y: 530, radius: 95 }
+];
+
 export const SHIFT_LEVELS = [
   {
     level: 1,

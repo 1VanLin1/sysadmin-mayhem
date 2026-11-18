@@ -1,4 +1,15 @@
-import { MAP_CONFIG, ZONES } from './constants.js';
+import { MAP_CONFIG, ZONES, COOLANT_PUDDLES } from './constants.js';
+
+export function isPlayerOnCoolant(x, y, activeIncidents = []) {
+  const hasCoolantIncident = activeIncidents.some((inc) => inc.type === 'coolant_leak' || inc.type === 'radiator_jam');
+  if (!hasCoolantIncident) return false;
+
+  for (const p of COOLANT_PUDDLES) {
+    const dist = Math.hypot(x - p.x, y - p.y);
+    if (dist < p.radius) return true;
+  }
+  return false;
+}
 
 export function resolveCollisions(x, y) {
   const r = MAP_CONFIG.playerRadius;

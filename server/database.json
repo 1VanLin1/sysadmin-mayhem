@@ -115,9 +115,9 @@
       "passwordHash": "2682548a95337b23c08dadc7b3f2e7c61579d0cdb9243e3ea72062fc75cc61fe",
       "color": "#6366f1",
       "highScore": 5250,
-      "totalRepairs": 38,
-      "wins": 2,
-      "gamesPlayed": 4,
+      "totalRepairs": 49,
+      "wins": 3,
+      "gamesPlayed": 5,
       "createdAt": "2026-11-17T11:19:55.853Z"
     },
     {
@@ -167,6 +167,18 @@
       "wins": 0,
       "gamesPlayed": 0,
       "createdAt": "2026-11-18T10:32:13.967Z"
+    },
+    {
+      "id": "usr_1795000798859_zalz",
+      "username": "test_admin_1795000798764",
+      "salt": "3ef9511a4d53754c033093f119610833",
+      "passwordHash": "4696cd3c721214c44bf94bb08e13e2f61ed668ca270f7c916cefcec3f12baaa7",
+      "color": "#10b981",
+      "highScore": 0,
+      "totalRepairs": 0,
+      "wins": 0,
+      "gamesPlayed": 0,
+      "createdAt": "2026-11-18T11:19:58.859Z"
     }
   ]
 }

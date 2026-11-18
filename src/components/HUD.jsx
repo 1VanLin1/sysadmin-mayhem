@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Timer, ShieldCheck, Volume2, VolumeX, AlertTriangle, ChevronDown, ChevronUp, Swords, Zap, BatteryCharging, Bomb, LogOut, Flag, Radio, Wifi } from 'lucide-react';
-import { SHIFT_LEVELS, ABILITIES, getCareerTitle } from '../game/constants.js';
+import { Timer, ShieldCheck, Volume2, VolumeX, AlertTriangle, ChevronDown, ChevronUp, Swords, Zap, BatteryCharging, Bomb, LogOut, Flag, Radio, Wifi, Sparkles } from 'lucide-react';
+import { SHIFT_LEVELS, ABILITIES, getCareerTitle, getAdminClass } from '../game/constants.js';
 import { MiniMap } from './MiniMap.jsx';
 
 export function HUD({
@@ -14,6 +14,7 @@ export function HUD({
   targetRepairs = 5,
   activeIncidents,
   powerOnline,
+  blackout,
   onSelectTool,
   onUseAbility,
   onSurrenderPvp,
@@ -21,6 +22,8 @@ export function HUD({
   onRespondCoopExit,
   coopExitPrompt,
   onOpenPingWheel,
+  onOpenMinigame,
+  hasNearbyIncident,
   quickPings = [],
   ping = 25,
   isMuted,
@@ -61,6 +64,7 @@ export function HUD({
   const myPercent = Math.round((myScore / totalDuelScore) * 100);
 
   const careerRank = getCareerTitle(myScore);
+  const adminClass = getAdminClass(myPlayer?.adminClass);
 
   const handleConfirmExit = () => {
     setShowExitConfirm(false);
@@ -75,6 +79,7 @@ export function HUD({
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 z-40">
       {/* Top Header Bar */}
       <div className="flex flex-row items-center justify-between gap-4 pointer-events-auto">
+        {/* Left: SLA or PvP Score Duel */}
         {/* Left: SLA or PvP Score Duel */}
         {mode === 'pvp' ? (
           <div className="bg-slate-900/95 border border-indigo-500/40 rounded-2xl p-3 px-5 shadow-xl backdrop-blur-md flex items-center gap-4">
@@ -189,6 +194,21 @@ export function HUD({
           )}
         </div>
       </div>
+
+      {/* Blackout UPS Alarm Banner */}
+      {blackout?.active && (
+        <div className="self-center -mt-6 bg-rose-950/95 border-2 border-rose-500 rounded-2xl p-2.5 px-6 shadow-2xl backdrop-blur-md pointer-events-auto flex items-center gap-3 animate-pulse z-40">
+          <span className="text-2xl animate-spin">🚨</span>
+          <div>
+            <div className="font-mono text-sm font-black text-rose-200">
+              БЛЭКАУТ! ИБП: <span className="text-amber-300 font-extrabold">{blackout.upsRemaining} сек</span>
+            </div>
+            <div className="text-[11px] text-slate-300 font-mono">
+              Дизель-генератор во дворе обесточен! Добегите до ДГУ и дерните стартер!
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Side Tasks Panel (Rendered on top-right, NOT blocking the center) */}
       {activeIncidents?.length > 0 && (
@@ -360,11 +380,21 @@ export function HUD({
               👨‍💻
             </div>
             <div>
-              <div className="text-sm font-bold text-white leading-tight flex items-center gap-1.5">
+              <div className="text-sm font-bold text-white leading-tight flex items-center gap-1.5 flex-wrap">
                 <span>{myPlayer?.name || 'Админ'}</span>
                 <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700">
                   {careerRank.icon} {careerRank.title}
                 </span>
+                {adminClass && (
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-950/80 text-sky-300 border border-sky-800">
+                    {adminClass.icon} {adminClass.name}
+                  </span>
+                )}
+                {myPlayer?.hasCatBlessing && (
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-800 animate-pulse">
+                    😻 Байт +20%
+                  </span>
+                )}
               </div>
               <div className="text-xs text-indigo-400 font-mono mt-0.5">
                 Очки: <span className="font-bold text-white">{myScore} XP</span>
@@ -373,8 +403,19 @@ export function HUD({
           </div>
         </div>
 
-        {/* Center: ACTIVE ABILITIES WITH COOLDOWN BAR [R, F, C] */}
+        {/* Center: ACTIVE ABILITIES WITH COOLDOWN BAR [R, F, C] + FAST MINIGAME [M] */}
         <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-2 px-3 shadow-xl backdrop-blur-md flex items-center gap-2">
+          {hasNearbyIncident && (
+            <button
+              onClick={onOpenMinigame}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/40 border border-amber-500 text-amber-300 text-xs font-mono font-bold animate-bounce shadow-lg shadow-amber-500/20 transition-all active:scale-95"
+              title="Открыть экспресс-мини-игру (Клавиша M)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Мини-игра [M]</span>
+            </button>
+          )}
+
           <span className="text-[11px] font-mono text-slate-400 mr-1 hidden lg:inline">
             Способности:
           </span>

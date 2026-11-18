@@ -75,7 +75,7 @@ io.on('connection', (socket) => {
     socket.emit('pong_check', data);
   });
 
-  socket.on('join_game', ({ roomId, username, color, mode, withBot, dbUsername }) => {
+  socket.on('join_game', ({ roomId, username, color, mode, withBot, dbUsername, adminClass }) => {
     const targetRoomId = (roomId || 'DATA-1').trim().toUpperCase();
     const targetMode = mode === 'pvp' ? 'pvp' : 'coop';
     const room = getOrCreateRoom(targetRoomId, targetMode);
@@ -85,11 +85,11 @@ io.on('connection', (socket) => {
       room.mode = targetMode;
     }
 
-    const player = room.addPlayer(socket, username, color, false, dbUsername);
+    const player = room.addPlayer(socket, username, color, false, dbUsername, adminClass);
 
     if (withBot) {
       // Also spawn Senior AI sysadmin bot in this room
-      room.addPlayer(null, 'Васильич (Senior AI)', '#e11d48', true);
+      room.addPlayer(null, 'Васильич (Senior AI)', '#e11d48', true, null, 'hardware');
     }
 
     socket.emit('joined_room', {

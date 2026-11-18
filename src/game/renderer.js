@@ -1,4 +1,4 @@
-import { MAP_CONFIG, ZONES } from './constants.js';
+import { MAP_CONFIG, ZONES, COOLANT_PUDDLES } from './constants.js';
 
 export class GameRenderer {
   constructor(canvas) {
@@ -44,16 +44,24 @@ export class GameRenderer {
     // 1. Draw Environment (Indoor Server Room + Outdoor Yard + Dividing Doorway)
     this.drawEnvironment(gameState.powerOnline);
 
-    // 2. Draw Zones (Indoor Racks, Workbench, Terminal, Outdoor Satellite, Generator, Chiller)
+    // 2. Draw Coolant Puddles (Slippery floor)
+    this.drawCoolantPuddles(gameState);
+
+    // 3. Draw Zones (Indoor Racks, Workbench, Terminal, Outdoor Satellite, Generator, Chiller)
     this.drawZones(gameState);
 
-    // 3. Draw Particles (Smoke, Sparks, Steam)
+    // 4. Draw Server Cat (Byte / Байт)
+    if (gameState.cat) {
+      this.drawCat(gameState.cat);
+    }
+
+    // 5. Draw Particles (Smoke, Sparks, Steam)
     this.updateAndDrawParticles(gameState);
 
-    // 4. Draw Quick Ping Beacons on floor
+    // 6. Draw Quick Ping Beacons on floor
     this.drawQuickPings(quickPings);
 
-    // 5. Draw Players (with Interpolation & Prediction)
+    // 7. Draw Players (with Interpolation & Prediction)
     if (gameState.players) {
       const now = Date.now();
       for (const p of gameState.players) {
@@ -62,11 +70,29 @@ export class GameRenderer {
       }
     }
 
-    // 6. Draw Floating Texts
+    // 8. Draw Floating Texts
     this.updateAndDrawFloatingTexts();
 
-    // 7. Emergency Lighting Overlay
-    if (!gameState.powerOnline) {
+    // 9. Blackout / Emergency Lighting Overlay
+    if (gameState.blackout?.active) {
+      // Server room blackout darkness with flashing red emergency beacon
+      const splitX = MAP_CONFIG.outdoorStartX;
+      ctx.fillStyle = 'rgba(0, 5, 15, 0.72)';
+      ctx.fillRect(0, 0, splitX, canvas.height);
+
+      const strobe = 0.25 + Math.sin(this.tick * 0.12) * 0.15;
+      ctx.fillStyle = `rgba(239, 68, 68, ${strobe})`;
+      ctx.fillRect(0, 0, splitX, canvas.height);
+
+      ctx.fillStyle = '#fef08a';
+      ctx.font = 'bold 15px "JetBrains Mono"';
+      ctx.textAlign = 'center';
+      ctx.fillText(
+        `🚨 БЛЭКАУТ! ИБП: ${gameState.blackout.upsRemaining} сек! БЕГИТЕ К ДГУ ВО ДВОР! 🚜`,
+        canvas.width / 2,
+        35
+      );
+    } else if (!gameState.powerOnline) {
       const alpha = 0.35 + Math.sin(this.tick * 0.08) * 0.15;
       ctx.fillStyle = `rgba(239, 68, 68, ${alpha})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -76,6 +102,143 @@ export class GameRenderer {
       ctx.textAlign = 'center';
       ctx.fillText('⚡ ВНИМАНИЕ: СБОЙ ПИТАНИЯ! ПЕРЕЗАПУСТИТЕ PDU ИЛИ ДИЗЕЛЬ-ГЕНЕРАТОР ВО ДВОРЕ!', canvas.width / 2, 35);
     }
+  }
+
+  drawCoolantPuddles(gameState) {
+    const { ctx } = this;
+    const hasLeak = gameState.activeIncidents?.some((i) => i.type === 'coolant_leak' || i.type === 'radiator_jam');
+    if (!hasLeak) return;
+
+    for (const p of COOLANT_PUDDLES) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.3)';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, p.radius, p.radius * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(125, 211, 252, 0.7)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Frost sparkles
+      const glintX = p.x + Math.sin(this.tick * 0.05) * (p.radius * 0.4);
+      const glintY = p.y + Math.cos(this.tick * 0.05) * (p.radius * 0.2);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '14px sans-serif';
+      ctx.fillText('❄️', glintX, glintY);
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 10px "JetBrains Mono"';
+      ctx.textAlign = 'center';
+      ctx.fillText('СКОЛЬЗКИЙ ХЛАДАГЕНТ', p.x, p.y + 4);
+      ctx.restore();
+    }
+  }
+
+  drawCat(cat) {
+    const { ctx } = this;
+    const cx = cat.x;
+    const cy = cat.y;
+
+    ctx.save();
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 12, 14, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail swishing
+    const tailWiggle = Math.sin(this.tick * 0.12) * 6;
+    ctx.strokeStyle = '#ea580c';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - 10, cy + 5);
+    ctx.quadraticCurveTo(cx - 20, cy - 2, cx - 18 + tailWiggle, cy - 14);
+    ctx.stroke();
+
+    // Cat Body
+    ctx.fillStyle = '#f97316';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 3, 14, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cream Belly
+    ctx.fillStyle = '#fed7aa';
+    ctx.beginPath();
+    ctx.ellipse(cx + 2, cy + 4, 7, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cat Head
+    ctx.fillStyle = '#f97316';
+    ctx.beginPath();
+    ctx.arc(cx + 6, cy - 6, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Triangular Ears
+    ctx.fillStyle = '#ea580c';
+    ctx.beginPath();
+    ctx.moveTo(cx + 1, cy - 12);
+    ctx.lineTo(cx + 5, cy - 18);
+    ctx.lineTo(cx + 8, cy - 12);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(cx + 8, cy - 12);
+    ctx.lineTo(cx + 12, cy - 18);
+    ctx.lineTo(cx + 15, cy - 12);
+    ctx.fill();
+
+    // Pink ear inner
+    ctx.fillStyle = '#f43f5e';
+    ctx.beginPath();
+    ctx.moveTo(cx + 3, cy - 12);
+    ctx.lineTo(cx + 5, cy - 16);
+    ctx.lineTo(cx + 7, cy - 12);
+    ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.arc(cx + 4, cy - 7, 1.5, 0, Math.PI * 2);
+    ctx.arc(cx + 9, cy - 7, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Whiskers
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx + 10, cy - 5);
+    ctx.lineTo(cx + 18, cy - 6);
+    ctx.moveTo(cx + 10, cy - 3);
+    ctx.lineTo(cx + 18, cy - 2);
+    ctx.stroke();
+
+    // Hearts if purring, zZz if sleeping
+    if (cat.isPurring) {
+      const heartPulse = Math.sin(this.tick * 0.15) * 3;
+      ctx.font = '16px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('❤️', cx, cy - 22 + heartPulse);
+      ctx.fillText('😻 Мур-р-р', cx, cy - 36);
+    }
+
+    // Name badge
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.beginPath();
+    ctx.roundRect(cx - 38, cy + 16, 76, 16, 4);
+    ctx.fill();
+    ctx.strokeStyle = '#f97316';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = '#fdba74';
+    ctx.font = 'bold 9px "JetBrains Mono"';
+    ctx.textAlign = 'center';
+    ctx.fillText('🐾 Кот Байт [E]', cx, cy + 27);
+
+    ctx.restore();
   }
 
   drawQuickPings(quickPings) {
@@ -518,6 +681,16 @@ export class GameRenderer {
       const emoji = itemEmojis[currentTool] || '❓';
       ctx.font = '18px sans-serif';
       ctx.fillText(emoji, px + r + 2, py - 4);
+    }
+
+    // Cat Blessing Aura (if player petted Byte the cat)
+    if (player.hasCatBlessing) {
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.25)';
+      ctx.beginPath();
+      ctx.arc(px, py, r * 1.35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.font = '12px sans-serif';
+      ctx.fillText('🐾', px - r - 4, py - 4);
     }
 
     // Sabotaged Glitch effect

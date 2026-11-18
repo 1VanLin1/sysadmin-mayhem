@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Server, Users, Bot, Play, Zap, Shield, Sparkles, Trophy, LogIn, UserCheck, LogOut, X, RefreshCw, Award, Copy, Check, Lock, User, Wrench, Radio } from 'lucide-react';
 import { audio } from '../game/audio.js';
-import { getCareerTitle } from '../game/constants.js';
+import { getCareerTitle, ADMIN_CLASSES } from '../game/constants.js';
 
 const COLORS = [
   { name: 'Cyber Indigo', hex: '#6366f1' },
@@ -34,6 +34,7 @@ export function Lobby({ onJoinGame }) {
   });
 
   const [selectedColor, setSelectedColor] = useState('#6366f1');
+  const [selectedClass, setSelectedClass] = useState('netops');
   const [mode, setMode] = useState('coop');
   const [roomCode, setRoomCode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -131,7 +132,8 @@ export function Lobby({ onJoinGame }) {
       color: selectedColor,
       mode,
       withBot,
-      dbUsername: currentUser ? currentUser.username : finalName
+      dbUsername: currentUser ? currentUser.username : finalName,
+      adminClass: selectedClass
     });
   };
 
@@ -355,6 +357,37 @@ export function Lobby({ onJoinGame }) {
                   </div>
                 </div>
               </label>
+
+              {/* Admin Specialization / Class Selector */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider font-mono">
+                  Специализация сисадмина
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {ADMIN_CLASSES.map((cls) => {
+                    const isSelected = selectedClass === cls.id;
+                    return (
+                      <button
+                        key={cls.id}
+                        type="button"
+                        onClick={() => setSelectedClass(cls.id)}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          isSelected
+                            ? 'bg-slate-800 border-indigo-500 ring-2 ring-indigo-500 shadow-md text-white'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="text-base mb-1 flex items-center justify-between">
+                          <span>{cls.icon}</span>
+                          {isSelected && <span className="text-[10px] font-bold text-indigo-400 uppercase font-mono">Выбрано</span>}
+                        </div>
+                        <div className="font-bold text-xs text-slate-200">{cls.name}</div>
+                        <div className="text-[10px] text-slate-400 leading-tight mt-0.5">{cls.desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* SLA Banner */}
               <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-xs text-slate-400 space-y-1">
