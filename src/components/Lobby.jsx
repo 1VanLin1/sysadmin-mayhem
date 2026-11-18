@@ -147,8 +147,8 @@ export function Lobby({ onJoinGame }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#080c14] text-slate-100 flex flex-col justify-center items-center p-4 sm:p-6 overflow-y-auto">
-      <div className="max-w-4xl w-full space-y-6 my-auto">
+    <div className="w-full min-h-screen bg-[#080c14] text-slate-100 flex flex-col items-center justify-start pt-6 pb-12 px-4 sm:px-6">
+      <div className="max-w-4xl w-full space-y-6">
         {/* Top Navbar: Auth status & Leaderboard button */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold uppercase tracking-wider">

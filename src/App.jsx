@@ -508,7 +508,11 @@ export default function App() {
   });
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#080c14] flex items-center justify-center">
+    <div
+      className={`relative w-screen h-screen bg-[#080c14] ${
+        screen === 'lobby' ? 'overflow-y-auto' : 'overflow-hidden flex items-center justify-center'
+      }`}
+    >
       {screen === 'lobby' && (
         <Lobby onJoinGame={handleJoinGame} />
       )}
